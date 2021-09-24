@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 /* 
  * runcached
  * Execute commands while caching their output for subsequent calls. 
@@ -18,134 +19,44 @@
 #include <math.h>
 #include <time.h>
 
+#define CACHEDIR_MAXLEN 512
+#define PIDFILE_MAXLEN 1024
+
+// seconds to wait for previous same command to finish before quiting
+#define MAX_PIDWAIT_TIME 5
 
 int cacheperiod=27; //seconds
-char cachedir[512];
-int maxwaitprev=5;  //seconds to wait for previous same command to finish before quiting
+char cachedir[CACHEDIR_MAXLEN];
 int minrand=0;      //random seconds to wait before running cmd
 int maxrand=0;
 int argskip=1;
-char pidfile[128];
+char pidfile[PIDFILE_MAXLEN];
 
-char * str2md5str( char[]);
-void cleanup(void);
-int runit(char **,char *,char *,char *,char *);
-int isfile(char *path) ;
 
-int main(int argc, char **argv) {
-    int i,j,count;
-    char cmd[1024];
-    char buf[512];
-    char * cmdmd5;
-    FILE *fp;
-    struct stat st;
-    time_t diffsec;
-
-    char cmddatafile[128];
-    char cmdexitcode[128];
-    char cmdfile[128];
-
-    if (argc<2 || (argc==2 && !strcmp(argv[1],"-c"))) {
-        fprintf(stderr,"Usage: %s [-c cacheperiod] <command to execute with args>\n",argv[0]);
-        exit(1);
-    }
-
-    if (!strcmp(argv[1],"-c")) {
-        cacheperiod=atoi(argv[2]);
-        argskip=3;
-    }
-
-    strcpy(cachedir,"/tmp");
-
-    for (j=0,cmd[0]=0,i=0+argskip;i<argc;i++) {
-        j+=strlen(argv[i]);
-        if (j+1>sizeof(cachedir)) {
-            fprintf(stderr,"argument list too long\n");
-            exit(2);
-        }
-        strcat(cmd,argv[i]);
-        strcat(cmd," ");
-    }
-
-    cmd[strlen(cmd)-1]=0;
-
-    cmdmd5=str2md5str(cmd);
-
-    if (maxrand-minrand) {
-        srand(time(NULL));
-        sleep(rand()%(maxrand+1)+minrand);
-    }
-
-    snprintf(pidfile,127,"%s/%s-runcached.pid",cachedir,cmdmd5);
-    snprintf(cmddatafile,127,"%s/%s.data",cachedir,cmdmd5);
-    snprintf(cmdexitcode,127,"%s/%s.exitcode",cachedir,cmdmd5);
-    snprintf(cmdfile,127,"%s/%s.cmd",cachedir,cmdmd5);
-
-    atexit(cleanup);
-
-    // don't run the same command in parallel, wait the previous one to finish
-    count=maxwaitprev;
-    while (isfile(pidfile)) {
-        sleep(1);
-        count-=1;
-        if (count == 0) {
-            fprintf(stderr,"timeout waiting for previous %s to finish\n" , cmd);
-            exit (1);
-        }
-    }
-
-    //write pid file
-    fp = fopen(pidfile,"w");
-	if (!fp) {
-		perror(pidfile);
-		exit(2);
-	}
-    fprintf(fp,"%ld",(long)getpid());
-    fclose(fp);
-
-    //if not cached before, run it
-    if (!isfile(cmddatafile)) {
-        runit(argv,cmd,cmddatafile,cmdexitcode,cmdfile) ;
-    }
-
-    //if too old, re-run it
-    if (stat(cmddatafile, &st) == -1) {
-        perror("stat");
-        exit(EXIT_FAILURE);
-    }
-
-    diffsec=time(0)-(time_t)st.st_mtim.tv_sec;
-
-    if (diffsec > cacheperiod) {
-        runit(argv,cmd,cmddatafile,cmdexitcode,cmdfile) ;
-    }
-
-    fp = fopen(cmddatafile,"r");
-	if (!fp) {
-		perror(cmddatafile);
-		exit(1);
-	}
-    while (fgets(buf, sizeof(buf), fp) != NULL)
-        printf("%s", buf);
-    fclose(fp);
-
-    exit(0);
-
-} //main
-
-int isfile(char *path) {
+int isfile (
+    char *path
+)
+{
     return (access( path, F_OK ) != -1 ) ;
 }
 
+
 void cleanup(void) {
     //if ( access( pidfile, F_OK ) != -1 ) {
-	printf("Cleanup\n");
     if (isfile(pidfile)) {
         unlink(pidfile);
     }
 }
 
-int runit(char **argv,char * cmd,char * cmddatafile,char * cmdexitcode,char * cmdfile) {
+
+int runit (
+    char **argv,
+    char * cmd,
+    char * cmddatafile,
+    char * cmdexitcode,
+    char * cmdfile
+)
+{
     int out_old, out_new;
     int err_old, err_new;
     int exitcode;
@@ -214,14 +125,17 @@ int runit(char **argv,char * cmd,char * cmddatafile,char * cmdexitcode,char * cm
     fflush(stderr);
     dup2(err_old, 2);
     close(err_old);
+
+    return 0;
+    (void)argv;
 }
 
 
  
-typedef union uwb {
+union uwb {
     unsigned w;
     unsigned char b[4];
-} WBunion;
+};
  
 typedef unsigned Digest[4];
  
@@ -239,7 +153,10 @@ unsigned f3( unsigned abcd[] ){
  
 typedef unsigned (*DgstFctn)(unsigned a[]);
  
-unsigned *calcKs( unsigned *k)
+
+unsigned *calcKs (
+    unsigned *k
+)
 {
     double s, pwr;
     int i;
@@ -252,14 +169,22 @@ unsigned *calcKs( unsigned *k)
     return k;
 }
  
-// ROtate v Left by amt bits
-unsigned rol( unsigned v, short amt )
+
+// Rotate v Left by amt bits
+unsigned rol (
+    unsigned v,
+    short amt
+)
 {
     unsigned  msk1 = (1<<amt) -1;
     return ((v>>(32-amt)) & msk1) | ((v<<amt) & ~msk1);
 }
  
-unsigned *md5( const char *msg, int mlen) 
+
+unsigned *md5 (
+    const char *msg,
+    int mlen
+) 
 {
     static Digest h0 = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476 };
 //    static Digest h0 = { 0x01234567, 0x89ABCDEF, 0xFEDCBA98, 0x76543210 };
@@ -301,7 +226,7 @@ unsigned *md5( const char *msg, int mlen)
         while (q < 64*grps){ msg2[q] = 0; q++ ; }
         {
 //            unsigned char t;
-            WBunion u;
+            union uwb u;
             u.w = 8*mlen;
 //            t = u.b[0]; u.b[0] = u.b[3]; u.b[3] = t;
 //            t = u.b[1]; u.b[1] = u.b[2]; u.b[2] = t;
@@ -335,11 +260,14 @@ unsigned *md5( const char *msg, int mlen)
     return h;
 }    
  
-char * str2md5str( char msg[] )
+
+char * str2md5str (
+    char msg[]
+)
 {
     int j,k;
     unsigned *d = md5(msg, strlen(msg));
-    WBunion u;
+    union uwb u;
     char s[16];
 
     char * md5str;
@@ -354,4 +282,116 @@ char * str2md5str( char msg[] )
     }
  
     return md5str;
+}
+
+
+int main (
+    int argc,
+    char **argv
+)
+{
+    int i,j,count;
+    char cmd[1024];
+    char buf[512];
+    char * cmdmd5;
+    FILE *fp;
+    struct stat st;
+    time_t diffsec;
+    int bytes_written = 0;
+
+    char cmddatafile[1024];
+    char cmdexitcode[1024];
+    char cmdfile[1024];
+
+    if (argc<2 || (argc==2 && !strcmp(argv[1],"-c"))) {
+        fprintf(stderr,"Usage: %s [-c cacheperiod] <command to execute with args>\n",argv[0]);
+        exit(1);
+    }
+
+    if (!strcmp(argv[1],"-c")) {
+        cacheperiod = atoi(argv[2]);
+        argskip = 3;
+    }
+
+    bytes_written = snprintf(cachedir, CACHEDIR_MAXLEN, "/tmp");
+    if (-1 == bytes_written) {
+        fprintf(stderr, "%s:%d:%s: snprintf returned -1\n", __FILE__, __LINE__, __func__);
+        exit(EXIT_FAILURE);
+    }
+
+    for (j=0,cmd[0]=0,i=0+argskip; i < argc; i++) {
+        j += strlen(argv[i]);
+        if ((long unsigned int)(j+1) > sizeof(cmd)) {
+            fprintf(stderr, "%s:%d:%s: cmd is too long for internal buffers\n", __FILE__, __LINE__, __func__);
+            exit(2);
+        }
+
+        strcat(cmd, argv[i]);
+        strcat(cmd, " ");
+    }
+
+    cmd[strlen(cmd)-1]=0;
+
+    cmdmd5=str2md5str(cmd);
+
+    if (maxrand-minrand) {
+        srand(time(NULL));
+        sleep(rand()%(maxrand+1)+minrand);
+    }
+
+    snprintf(pidfile, PIDFILE_MAXLEN, "%s/%s-runcached.pid", cachedir, cmdmd5);
+    snprintf(cmddatafile, 1024, "%s/%s.data", cachedir, cmdmd5);
+    snprintf(cmdexitcode, 1024, "%s/%s.exitcode", cachedir, cmdmd5);
+    snprintf(cmdfile, 1024, "%s/%s.cmd", cachedir, cmdmd5);
+
+    atexit(cleanup);
+
+    // don't run the same command in parallel, wait the previous one to finish
+    count = MAX_PIDWAIT_TIME;
+    while (isfile(pidfile)) {
+        sleep(1);
+        count-=1;
+        if (0 == count) {
+            fprintf(stderr,"timeout waiting for previous %s to finish\n" , cmd);
+            exit(1);
+        }
+    }
+
+    // write pid file
+    fp = fopen(pidfile,"w");
+	if (!fp) {
+		perror(pidfile);
+		exit(2);
+	}
+    fprintf(fp,"%ld",(long)getpid());
+    fclose(fp);
+
+
+    // if not cached before, run it
+    if (!isfile(cmddatafile)) {
+        runit(argv,cmd,cmddatafile,cmdexitcode,cmdfile) ;
+    }
+
+    // if too old, re-run it
+    if (stat(cmddatafile, &st) == -1) {
+        perror("stat");
+        exit(EXIT_FAILURE);
+    }
+
+    diffsec = time(0)-(time_t)st.st_mtim.tv_sec;
+
+    if (diffsec > cacheperiod) {
+        runit(argv,cmd,cmddatafile,cmdexitcode,cmdfile) ;
+    }
+
+    fp = fopen(cmddatafile,"r");
+	if (!fp) {
+		perror(cmddatafile);
+		exit(1);
+	}
+    while (fgets(buf, sizeof(buf), fp) != NULL)
+        printf("%s", buf);
+    fclose(fp);
+
+    exit(0);
 }

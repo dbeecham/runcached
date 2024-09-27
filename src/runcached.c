@@ -378,7 +378,7 @@ int main (
         exit(EXIT_FAILURE);
     }
 
-    diffsec = time(0)-(time_t)st.st_mtim.tv_sec;
+    diffsec = time(0) - st.st_mtime;
 
     if (diffsec > cacheperiod) {
         runit(argv,cmd,cmddatafile,cmdexitcode,cmdfile) ;
